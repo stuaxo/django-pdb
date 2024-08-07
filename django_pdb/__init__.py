@@ -7,13 +7,16 @@ DEBUG = getattr(settings, 'DEBUG', False)
 
 if DEBUG and POST_MORTEM == True:
     from django.views import debug
-    def runpdb(request, exc_type, exc_value, tb):
+    def runpdb(request, exc_type, exc_value, tb, status_code=500):
         import sys
         try:
-            import ipdb
+            import pudb as pdb
         except ImportError:
-            import pdb as ipdb
-        p = ipdb
+            try:
+                import ipdb as pdb
+            except ImportError:
+                import pdb
+        p = pdb
         print('Exception occured: {}, {}'.format(exc_type, exc_value), file=sys.stderr)
         p.post_mortem(tb)
     debug.technical_500_response = runpdb

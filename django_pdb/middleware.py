@@ -8,7 +8,7 @@ import sys
 from django.conf import settings
 from django.core.exceptions import MiddlewareNotUsed
 
-from django_pdb.utils import get_ipdb, has_ipdb
+from django_pdb.utils import get_ipdb, has_ipdb, get_pudb, has_pudb
 
 
 try:
@@ -38,7 +38,10 @@ class PdbMiddleware(parent):
         unless settings.DEBUG is also True. Otherwise, this middleware
         is always active.
         """
-        self.get_response = get_response
+        if parent is object:  # compatibility
+            self.get_response = get_response
+        else:
+            super().__init__(get_response)
         if debug_only and not settings.DEBUG:
             raise MiddlewareNotUsed()
 
@@ -50,6 +53,8 @@ class PdbMiddleware(parent):
             type_pdb = 'pdb'
         elif request.GET.get('ipdb', None) is not None:
             type_pdb = 'ipdb'
+        elif request.GET.get('pudb', None) is not None:
+            type_pdb = 'pudb'
         return type_pdb
 
     def process_view(self, request, view_func, view_args, view_kwargs):
@@ -63,10 +68,19 @@ class PdbMiddleware(parent):
         if not type_pdb:
             return
 
-        filename = inspect.getsourcefile(view_func)
+        try:
+            filename = inspect.getsourcefile(view_func)
+        except TypeError:
+            if hasattr(view_func, "__class__"):
+                filename = inspect.getsourcefile(view_func.__class__)
+                lines, lineno = inspect.getsourcelines(view_func.__class__)
+            else:
+                raise
+        else:
+            lines, lineno = inspect.getsourcelines(view_func)
+
         basename = os.path.basename(filename)
         dirname = os.path.basename(os.path.dirname(filename))
-        lines, lineno = inspect.getsourcelines(view_func)
         temporary = True
         cond = None
         funcname = view_func.__name__
@@ -79,11 +93,13 @@ class PdbMiddleware(parent):
         print('kwargs: {}'.format(view_kwargs))
         print()
 
-        if type_pdb == 'ipdb' and has_ipdb():
+        if type_pdb == 'pudb' and has_pudb():
+            p = get_pudb()
+        elif type_pdb == 'ipdb' and has_ipdb():
             p = get_ipdb()
         else:
             if not type_pdb == 'pdb':
-                print('You do not install ipdb or ipython module')
+                print('You do not have ipdb/pudb or ipython module installed')
             p = pdb.Pdb()
         p.reset()
         p.set_break(filename, lineno + 1, temporary, cond, funcname)
